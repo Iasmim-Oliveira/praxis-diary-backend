@@ -105,3 +105,4 @@ docs/
   decisions/            # ADRs — decisões arquiteturais e o porquê de cada uma
 docker-compose.yml      # ambiente local do Postgres
 ```
+© 2026 Iasmim Vieira de Oliveira. Todos os direitos reservados. Este código não possui licença de uso livre.
