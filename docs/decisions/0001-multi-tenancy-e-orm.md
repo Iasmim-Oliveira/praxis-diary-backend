@@ -67,5 +67,3 @@ Adotar **Prisma** como ORM/camada de acesso a dados.
 - Queries muito específicas de performance/observabilidade (ex: métricas agregadas para o Grafana) podem exigir `$queryRaw` pontualmente.
 
 ## Referências
-
-- Conversa de definição de arquitetura, 2026-08-08.
