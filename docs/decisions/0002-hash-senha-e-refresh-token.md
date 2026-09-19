@@ -8,7 +8,7 @@
 Iniciando a fase de autenticação (JWT + refresh token) do Praxis Diary, duas decisões precisavam ser tomadas antes da implementação:
 
 1. Qual algoritmo usar para armazenar senhas de forma segura (nunca em texto puro)
-2. Como implementar o mecanismo de refresh token — statless ou stateful
+2. Como implementar o mecanismo de refresh token — stateless ou stateful
 
 ## Decisão 1: Hash de senha com `argon2id`
 
