@@ -27,54 +27,38 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<TokenPair> {
     const passwordHash = await argon2.hash(dto.password);
 
-    // Transação: ou cria o Tenant E o User juntos, ou nenhum dos dois.
-    // Evita ficar com um Tenant "órfão" sem usuário caso algo falhe no meio do caminho.
     let user: User;
     try {
-      user = await this.prisma.$transaction(async (tx) => {
-        const tenant = await tx.tenant.create({
-          data: { name: dto.tenantName },
-        });
-
-        return tx.user.create({
-          data: {
-            tenantId: tenant.id,
-            name: dto.name,
-            email: dto.email,
-            passwordHash,
-          },
-        });
+      user = await this.prisma.user.create({
+        data: {
+          name: dto.name,
+          email: dto.email,
+          passwordHash,
+        },
       });
     } catch (error) {
-      // P2002 = violação de constraint @unique/@@unique no Postgres.
-      // Só pode ser o par (tenantId, email) colidindo — mas como o tenantId
-      // acabou de ser criado agora, na prática isso nunca deveria disparar
-      // nesse fluxo específico de registro; é uma rede de segurança.
+      // P2002 = violação de constraint @unique no Postgres. É o que protege
+      // contra duas requisições simultâneas com o mesmo e-mail (race condition):
+      // uma checagem prévia no código não seria atômica, o banco é.
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('E-mail já cadastrado nesta organização');
+        throw new ConflictException('E-mail já cadastrado');
       }
       throw error;
     }
 
     return this.issueTokens({
       sub: user.id,
-      tenantId: user.tenantId,
       email: user.email,
     });
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
-    // @@unique([tenantId, email]) no schema garante que essa busca só pode retornar 1 registro
+    // `email @unique` no schema garante que essa busca só pode retornar 1 registro
     const user = await this.prisma.user.findUnique({
-      where: {
-        tenantId_email: {
-          tenantId: dto.tenantId,
-          email: dto.email,
-        },
-      },
+      where: { email: dto.email },
     });
 
     // Mensagem de erro genérica de propósito: não revela se o problema foi o
@@ -91,7 +75,6 @@ export class AuthService {
 
     return this.issueTokens({
       sub: user.id,
-      tenantId: user.tenantId,
       email: user.email,
     });
   }
@@ -110,7 +93,6 @@ export class AuthService {
 
     return this.issueTokens({
       sub: user.id,
-      tenantId: user.tenantId,
       email: user.email,
     });
   }
