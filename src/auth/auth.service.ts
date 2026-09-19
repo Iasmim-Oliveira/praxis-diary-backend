@@ -25,7 +25,9 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<TokenPair> {
-    const passwordHash = await argon2.hash(dto.password);
+    const passwordHash = await argon2.hash(dto.password, {
+      type: argon2.argon2id,
+    });
 
     let user: User;
     try {
