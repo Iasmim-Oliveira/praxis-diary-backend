@@ -18,7 +18,7 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 
 - [x] Fundação do projeto (NestJS, Git, Docker Compose)
 - [x] Modelagem inicial de dados (`Tenant`, `User`) com isolamento multi-tenant via `tenantId`
-- [ ] Autenticação (JWT + refresh token)
+- [x] Autenticação (JWT + refresh token)
 - [ ] Autorização (RBAC)
 - [ ] Regras de negócio core (agendamento, clientes, disponibilidade)
 - [ ] Segurança de API (rate limiting, helmet, validação de input, CORS)
