@@ -1,6 +1,6 @@
 # Praxis Diary — Backend
 
-API RESTful segura e observável para uma plataforma SaaS multi-tenant de agendamento e gestão de clientes.
+API RESTful segura e observável para uma plataforma SaaS de agendamento e gestão de clientes.
 
 Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão de Curso **"API Segura com Observabilidade e Boas Práticas de Mercado - Praxis Diary"**, com foco em autenticação/autorização, isolamento de dados entre organizações (multi-tenancy) e observabilidade (logs estruturados, métricas e dashboards).
 
@@ -17,7 +17,7 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 ## Status do projeto
 
 - [x] Fundação do projeto (NestJS, Git, Docker Compose)
-- [x] Modelagem inicial de dados (`Tenant`, `User`) com isolamento multi-tenant via `tenantId`
+- [x] Modelagem inicial de dados
 - [ ] Autenticação (JWT + refresh token)
 - [ ] Autorização (RBAC)
 - [ ] Regras de negócio core (agendamento, clientes, disponibilidade)
