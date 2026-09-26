@@ -1,4 +1,7 @@
+import { Role } from '../../../generated/prisma/client';
+
 export interface JwtPayload {
   sub: string; // id do usuário — "sub" (subject) é o nome padrão do claim no JWT
   email: string;
+  role: Role;
 }
