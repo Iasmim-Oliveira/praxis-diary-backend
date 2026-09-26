@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { Prisma, User } from '../../generated/prisma/client';
+import { Prisma, Role, User } from '../../generated/prisma/client';
 import { requireEnv } from '../common/env.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
@@ -31,11 +31,19 @@ export class AuthService {
 
     let user: User;
     try {
+      // Bootstrap: o primeiro usuário cadastrado no sistema nasce ADMIN (não
+      // há outro jeito de existir um admin, já que não existe fluxo de
+      // convite/promoção fora da própria API). Todos os demais nascem USER;
+      // promoção a partir daí é feita por um ADMIN via PATCH /users/:id/role.
+      const usersCount = await this.prisma.user.count();
+      const role = usersCount === 0 ? Role.ADMIN : Role.USER;
+
       user = await this.prisma.user.create({
         data: {
           name: dto.name,
           email: dto.email,
           passwordHash,
+          role,
         },
       });
     } catch (error) {
@@ -54,6 +62,7 @@ export class AuthService {
     return this.issueTokens({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
   }
 
@@ -78,6 +87,7 @@ export class AuthService {
     return this.issueTokens({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
   }
 
@@ -96,6 +106,7 @@ export class AuthService {
     return this.issueTokens({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
   }
 
