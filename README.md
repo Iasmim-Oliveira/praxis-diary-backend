@@ -18,8 +18,8 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 
 - [x] Fundação do projeto (NestJS, Git, Docker Compose)
 - [x] Modelagem inicial de dados
-- [ ] Autenticação (JWT + refresh token)
-- [ ] Autorização (RBAC)
+- [x] Autenticação (JWT + refresh token)
+- [x] Autorização (RBAC)
 - [ ] Regras de negócio core (agendamento, clientes, disponibilidade)
 - [ ] Segurança de API (rate limiting, helmet, validação de input, CORS)
 - [ ] Observabilidade (logs estruturados, métricas Prometheus)
