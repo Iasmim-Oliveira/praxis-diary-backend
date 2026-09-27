@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { Prisma, User } from '../../generated/prisma/client';
+import { Prisma, Role, User } from '../../generated/prisma/client';
 import { requireEnv } from '../common/env.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
@@ -31,17 +31,24 @@ export class AuthService {
 
     let user: User;
     try {
-      user = await this.prisma.user.create({
-        data: {
-          name: dto.name,
-          email: dto.email,
-          passwordHash,
-        },
+      user = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('praxis_diary:bootstrap_admin')::bigint)`;
+
+        const adminsCount = await tx.user.count({
+          where: { role: Role.ADMIN },
+        });
+        const role = adminsCount === 0 ? Role.ADMIN : Role.USER;
+
+        return tx.user.create({
+          data: {
+            name: dto.name,
+            email: dto.email,
+            passwordHash,
+            role,
+          },
+        });
       });
     } catch (error) {
-      // P2002 = violação de constraint @unique no Postgres. É o que protege
-      // contra duas requisições simultâneas com o mesmo e-mail (race condition):
-      // uma checagem prévia no código não seria atômica, o banco é.
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
@@ -54,18 +61,15 @@ export class AuthService {
     return this.issueTokens({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
-    // `email @unique` no schema garante que essa busca só pode retornar 1 registro
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    // Mensagem de erro genérica de propósito: não revela se o problema foi o
-    // e-mail não existir ou a senha estar errada (evita "enumeration attack",
-    // onde um atacante descobre quais e-mails estão cadastrados só testando).
     if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
@@ -78,13 +82,11 @@ export class AuthService {
     return this.issueTokens({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
   }
 
   async refresh(payload: JwtPayload): Promise<TokenPair> {
-    // O refresh token já foi validado (assinatura + expiração) pela JwtRefreshStrategy
-    // antes de chegar aqui. Ainda assim, confirmamos que o usuário existe de fato —
-    // ele pode ter sido removido depois do token ter sido emitido.
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
@@ -96,6 +98,7 @@ export class AuthService {
     return this.issueTokens({
       sub: user.id,
       email: user.email,
+      role: user.role,
     });
   }
 

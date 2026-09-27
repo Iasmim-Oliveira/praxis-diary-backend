@@ -36,3 +36,5 @@ postgres-data/
 .claude/
 .windsurf/
 skills-lock.json
+
+tcc/
