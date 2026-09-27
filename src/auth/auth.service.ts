@@ -105,11 +105,16 @@ export class AuthService {
   private issueTokens(payload: JwtPayload): TokenPair {
     const accessToken = this.jwtService.sign(payload, {
       secret: requireEnv('JWT_ACCESS_SECRET'),
+      // `expiresIn` do jsonwebtoken espera um tipo literal (ex: "15m"), mas
+      // env vars são sempre `string` pro TypeScript — não dá pra provar em
+      // tempo de compilação que o valor bate com o formato esperado.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expiresIn: requireEnv('JWT_ACCESS_EXPIRES_IN') as any,
     });
 
     const refreshToken = this.jwtService.sign(payload, {
       secret: requireEnv('JWT_REFRESH_SECRET'),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expiresIn: requireEnv('JWT_REFRESH_EXPIRES_IN') as any,
     });
 

@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Role } from '../../generated/prisma/client';
+import { Prisma, Role } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Nunca inclui passwordHash — é a lista/edição que o ADMIN vê na
@@ -29,31 +29,49 @@ export class UsersService {
   }
 
   async updateRole(id: string, role: Role) {
-    const user = await this.findOneOrThrow(id);
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockAdminRoster(tx);
 
-    if (user.role === Role.ADMIN && role !== Role.ADMIN) {
-      await this.ensureNotLastAdmin(id);
-    }
+      const user = await this.findOneOrThrow(tx, id);
 
-    return this.prisma.user.update({
-      where: { id },
-      data: { role },
-      select: SAFE_USER_SELECT,
+      if (user.role === Role.ADMIN && role !== Role.ADMIN) {
+        await this.ensureNotLastAdmin(tx, id);
+      }
+
+      return tx.user.update({
+        where: { id },
+        data: { role },
+        select: SAFE_USER_SELECT,
+      });
     });
   }
 
   async remove(id: string): Promise<void> {
-    const user = await this.findOneOrThrow(id);
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockAdminRoster(tx);
 
-    if (user.role === Role.ADMIN) {
-      await this.ensureNotLastAdmin(id);
-    }
+      const user = await this.findOneOrThrow(tx, id);
 
-    await this.prisma.user.delete({ where: { id } });
+      if (user.role === Role.ADMIN) {
+        await this.ensureNotLastAdmin(tx, id);
+      }
+
+      await tx.user.delete({ where: { id } });
+    });
   }
 
-  private async findOneOrThrow(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  // Serializa qualquer mudança que possa afetar quantos ADMINs existem.
+  // Sem isso, a checagem em ensureNotLastAdmin() e a mutação (update/delete)
+  // que vem depois não são atômicas entre si: dois ADMINs sendo removidos ao
+  // mesmo tempo poderiam cada um contar o outro como "o único restante",
+  // ambos passarem a checagem, e o sistema ficar com zero admins. O lock é
+  // escopado à transação — liberado sozinho no commit/rollback.
+  private async lockAdminRoster(tx: Prisma.TransactionClient): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('praxis_diary:admin_roster')::bigint)`;
+  }
+
+  private async findOneOrThrow(tx: Prisma.TransactionClient, id: string) {
+    const user = await tx.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
@@ -62,8 +80,11 @@ export class UsersService {
 
   // Regra de negócio: o sistema nunca pode ficar sem nenhum ADMIN (ninguém
   // mais poderia gerenciar usuários depois disso — um "lockout" de si mesmo).
-  private async ensureNotLastAdmin(excludingId: string): Promise<void> {
-    const otherAdmins = await this.prisma.user.count({
+  private async ensureNotLastAdmin(
+    tx: Prisma.TransactionClient,
+    excludingId: string,
+  ): Promise<void> {
+    const otherAdmins = await tx.user.count({
       where: { role: Role.ADMIN, id: { not: excludingId } },
     });
 
