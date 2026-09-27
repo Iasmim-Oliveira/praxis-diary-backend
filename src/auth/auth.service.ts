@@ -31,27 +31,41 @@ export class AuthService {
 
     let user: User;
     try {
-      // Bootstrap: enquanto não existir NENHUM admin no sistema, o próximo
-      // usuário cadastrado nasce ADMIN (não há outro jeito de existir um,
-      // já que não existe fluxo de convite/promoção fora da própria API).
-      // Checar "existe algum ADMIN" em vez de "a tabela está vazia" importa:
-      // numa instalação que já tenha usuários (ex: antes desta feature
-      // existir), a migration promove o mais antigo a ADMIN, mas essa
-      // checagem aqui também autocorrige o cenário caso isso não baste.
-      // Depois do primeiro admin, promoção é feita por um ADMIN existente
-      // via PATCH /users/:id/role.
-      const adminsCount = await this.prisma.user.count({
-        where: { role: Role.ADMIN },
-      });
-      const role = adminsCount === 0 ? Role.ADMIN : Role.USER;
+      user = await this.prisma.$transaction(async (tx) => {
+        // Bootstrap: enquanto não existir NENHUM admin no sistema, o próximo
+        // usuário cadastrado nasce ADMIN (não há outro jeito de existir um,
+        // já que não existe fluxo de convite/promoção fora da própria API).
+        // Checar "existe algum ADMIN" em vez de "a tabela está vazia" importa:
+        // numa instalação que já tenha usuários (ex: antes desta feature
+        // existir), a migration promove o mais antigo a ADMIN, mas essa
+        // checagem aqui também autocorrige o cenário caso isso não baste.
+        // Depois do primeiro admin, promoção é feita por um ADMIN existente
+        // via PATCH /users/:id/role.
+        //
+        // O count() e o create() abaixo não são atômicos por si só: duas
+        // requisições de registro concorrentes numa tabela sem admin ainda
+        // poderiam ambas ler adminsCount = 0 antes de qualquer uma delas
+        // commitar, e as duas nasceriam ADMIN. O advisory lock serializa
+        // exatamente essa decisão — só uma transação por vez passa daqui pra
+        // frente, e ele é liberado sozinho ao fim da transação (commit ou
+        // rollback), sem precisar de código explícito de unlock.
+        // hashtext() só transforma essa string legível numa chave numérica
+        // estável para o lock — não tem relação com hashing de senha.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('praxis_diary:bootstrap_admin')::bigint)`;
 
-      user = await this.prisma.user.create({
-        data: {
-          name: dto.name,
-          email: dto.email,
-          passwordHash,
-          role,
-        },
+        const adminsCount = await tx.user.count({
+          where: { role: Role.ADMIN },
+        });
+        const role = adminsCount === 0 ? Role.ADMIN : Role.USER;
+
+        return tx.user.create({
+          data: {
+            name: dto.name,
+            email: dto.email,
+            passwordHash,
+            role,
+          },
+        });
       });
     } catch (error) {
       // P2002 = violação de constraint @unique no Postgres. É o que protege
