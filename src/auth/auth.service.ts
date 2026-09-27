@@ -31,12 +31,19 @@ export class AuthService {
 
     let user: User;
     try {
-      // Bootstrap: o primeiro usuário cadastrado no sistema nasce ADMIN (não
-      // há outro jeito de existir um admin, já que não existe fluxo de
-      // convite/promoção fora da própria API). Todos os demais nascem USER;
-      // promoção a partir daí é feita por um ADMIN via PATCH /users/:id/role.
-      const usersCount = await this.prisma.user.count();
-      const role = usersCount === 0 ? Role.ADMIN : Role.USER;
+      // Bootstrap: enquanto não existir NENHUM admin no sistema, o próximo
+      // usuário cadastrado nasce ADMIN (não há outro jeito de existir um,
+      // já que não existe fluxo de convite/promoção fora da própria API).
+      // Checar "existe algum ADMIN" em vez de "a tabela está vazia" importa:
+      // numa instalação que já tenha usuários (ex: antes desta feature
+      // existir), a migration promove o mais antigo a ADMIN, mas essa
+      // checagem aqui também autocorrige o cenário caso isso não baste.
+      // Depois do primeiro admin, promoção é feita por um ADMIN existente
+      // via PATCH /users/:id/role.
+      const adminsCount = await this.prisma.user.count({
+        where: { role: Role.ADMIN },
+      });
+      const role = adminsCount === 0 ? Role.ADMIN : Role.USER;
 
       user = await this.prisma.user.create({
         data: {
