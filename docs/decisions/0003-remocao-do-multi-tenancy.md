@@ -24,7 +24,7 @@ Mudanças decorrentes:
 
 - **Schema:** remoção do model `Tenant`; `User` perde `tenantId`, a relação com `Tenant` e os índices associados; `email` passa a ser `@unique` globalmente.
 - **Banco:** a migration `init` foi recriada do zero, sem migration de remoção. O projeto não está em produção e não há dados a preservar, então o histórico não carrega uma tabela que nunca existiu na versão final.
-- **Autenticação:** o registro cria apenas o usuário (sem transação); o login usa `email` e `password`; o payload do JWT deixa de conter `tenantId`.
+- **Autenticação:** o registro deixa de criar `Tenant` + `User` juntos — cria apenas o `User`. (Uma transação reaparece depois, na ADR 0004, mas por um motivo não relacionado a multi-tenancy: serializar a decisão de quem se torna o primeiro `ADMIN`.) O login usa `email` e `password`; o payload do JWT deixa de conter `tenantId`.
 - **Autorização:** o RBAC (fase 4) passa a ser o principal mecanismo de controle de acesso.
 
 ## Alternativas consideradas
