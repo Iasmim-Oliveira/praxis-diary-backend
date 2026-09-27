@@ -32,25 +32,6 @@ export class AuthService {
     let user: User;
     try {
       user = await this.prisma.$transaction(async (tx) => {
-        // Bootstrap: enquanto não existir NENHUM admin no sistema, o próximo
-        // usuário cadastrado nasce ADMIN (não há outro jeito de existir um,
-        // já que não existe fluxo de convite/promoção fora da própria API).
-        // Checar "existe algum ADMIN" em vez de "a tabela está vazia" importa:
-        // numa instalação que já tenha usuários (ex: antes desta feature
-        // existir), a migration promove o mais antigo a ADMIN, mas essa
-        // checagem aqui também autocorrige o cenário caso isso não baste.
-        // Depois do primeiro admin, promoção é feita por um ADMIN existente
-        // via PATCH /users/:id/role.
-        //
-        // O count() e o create() abaixo não são atômicos por si só: duas
-        // requisições de registro concorrentes numa tabela sem admin ainda
-        // poderiam ambas ler adminsCount = 0 antes de qualquer uma delas
-        // commitar, e as duas nasceriam ADMIN. O advisory lock serializa
-        // exatamente essa decisão — só uma transação por vez passa daqui pra
-        // frente, e ele é liberado sozinho ao fim da transação (commit ou
-        // rollback), sem precisar de código explícito de unlock.
-        // hashtext() só transforma essa string legível numa chave numérica
-        // estável para o lock — não tem relação com hashing de senha.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('praxis_diary:bootstrap_admin')::bigint)`;
 
         const adminsCount = await tx.user.count({
@@ -68,9 +49,6 @@ export class AuthService {
         });
       });
     } catch (error) {
-      // P2002 = violação de constraint @unique no Postgres. É o que protege
-      // contra duas requisições simultâneas com o mesmo e-mail (race condition):
-      // uma checagem prévia no código não seria atômica, o banco é.
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
@@ -88,14 +66,10 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
-    // `email @unique` no schema garante que essa busca só pode retornar 1 registro
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    // Mensagem de erro genérica de propósito: não revela se o problema foi o
-    // e-mail não existir ou a senha estar errada (evita "enumeration attack",
-    // onde um atacante descobre quais e-mails estão cadastrados só testando).
     if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
@@ -113,9 +87,6 @@ export class AuthService {
   }
 
   async refresh(payload: JwtPayload): Promise<TokenPair> {
-    // O refresh token já foi validado (assinatura + expiração) pela JwtRefreshStrategy
-    // antes de chegar aqui. Ainda assim, confirmamos que o usuário existe de fato —
-    // ele pode ter sido removido depois do token ter sido emitido.
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
@@ -134,16 +105,11 @@ export class AuthService {
   private issueTokens(payload: JwtPayload): TokenPair {
     const accessToken = this.jwtService.sign(payload, {
       secret: requireEnv('JWT_ACCESS_SECRET'),
-      // `expiresIn` do jsonwebtoken espera um tipo literal (ex: "15m"), mas
-      // env vars são sempre `string` pro TypeScript — não dá pra provar em
-      // tempo de compilação que o valor bate com o formato esperado.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expiresIn: requireEnv('JWT_ACCESS_EXPIRES_IN') as any,
     });
 
     const refreshToken = this.jwtService.sign(payload, {
       secret: requireEnv('JWT_REFRESH_SECRET'),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expiresIn: requireEnv('JWT_REFRESH_EXPIRES_IN') as any,
     });
 
