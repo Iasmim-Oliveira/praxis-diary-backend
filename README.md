@@ -20,7 +20,7 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 - [x] Modelagem inicial de dados
 - [x] Autenticação (JWT + refresh token)
 - [x] Autorização (RBAC)
-- [x] Regras de negócio core (agendamento, clientes, disponibilidade)
+- [ ] Regras de negócio core (agendamento, clientes, disponibilidade) — modelo definido na [ADR 0005](docs/decisions/0005-dominio-de-agendamento.md), implementação pendente
 - [ ] Segurança de API (rate limiting, helmet, validação de input, CORS)
 - [ ] Observabilidade (logs estruturados, métricas Prometheus)
 - [ ] Dashboards (Grafana)
