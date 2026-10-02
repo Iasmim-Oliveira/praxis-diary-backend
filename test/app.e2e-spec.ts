@@ -5,6 +5,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { RedisThrottlerStorage } from './../src/common/redis-throttler-storage';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -17,6 +18,19 @@ describe('AppController (e2e)', () => {
     $disconnect: jest.fn(),
   };
 
+  // Mock do storage do throttler: sem isso, o e2e dependeria de um Redis de
+  // verdade rodando (ver ADR 0006) só pra instanciar o AppModule — o mesmo
+  // motivo do mock do Prisma acima. "Nunca bloqueado" é o suficiente aqui,
+  // já que estes testes não existem pra validar rate limiting.
+  const throttlerStorageMock = {
+    increment: jest.fn().mockResolvedValue({
+      totalHits: 0,
+      timeToExpire: 0,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    }),
+  };
+
   beforeEach(async () => {
     prismaMock.user.findUnique.mockReset();
 
@@ -25,6 +39,8 @@ describe('AppController (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
+      .overrideProvider(RedisThrottlerStorage)
+      .useValue(throttlerStorageMock)
       .compile();
 
     app = moduleFixture.createNestApplication();

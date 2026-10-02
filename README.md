@@ -10,7 +10,8 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 - **NestJS** — framework da API
 - **PostgreSQL** — banco de dados
 - **Prisma** — ORM / migrations
-- **Docker Compose** — ambiente de banco local
+- **Redis** — storage compartilhado do rate limiting
+- **Docker Compose** — ambiente local (Postgres + Redis)
 - Prometheus + Grafana — observabilidade _(planejado)_
 - Swagger/OpenAPI — documentação da API _(planejado)_
 
@@ -20,8 +21,8 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 - [x] Modelagem inicial de dados
 - [x] Autenticação (JWT + refresh token)
 - [x] Autorização (RBAC)
-- [x] Regras de negócio core (agendamento, clientes, disponibilidade)
-- [ ] Segurança de API (rate limiting, helmet, validação de input, CORS)
+- [ ] Regras de negócio core (agendamento, clientes, disponibilidade) — modelo definido na [ADR 0005](docs/decisions/0005-dominio-de-agendamento.md), implementação pendente
+- [x] Segurança de API (rate limiting, helmet, validação de input, CORS)
 - [ ] Observabilidade (logs estruturados, métricas Prometheus)
 - [ ] Dashboards (Grafana)
 - [ ] Documentação (OpenAPI/Swagger)
@@ -31,7 +32,7 @@ As decisões arquiteturais tomadas ao longo do projeto — e o porquê de cada u
 
 ## Pré-requisitos
 
-- Node.js 22+
+- Node.js 22.12+ (ou 20.19+/24+ — ver `engines` no `package.json`; `@nestjs/throttler` e o Prisma não suportam 22.0–22.11)
 - npm
 - Docker (usado aqui via [OrbStack](https://orbstack.dev/), mas Docker Desktop também funciona)
 
@@ -49,9 +50,9 @@ As decisões arquiteturais tomadas ao longo do projeto — e o porquê de cada u
    cp .env.example .env
    ```
 
-   Por padrão, o Postgres do projeto sobe na porta `5433` (não `5432`), para não conflitar com outras instâncias de Postgres que você já tenha rodando localmente. Ajuste o `.env` se precisar.
+   Por padrão, o Postgres do projeto sobe na porta `5433` (não `5432`), para não conflitar com outras instâncias de Postgres que você já tenha rodando localmente. O Redis sobe na `6379` por padrão — ajuste `REDIS_PORT`/`REDIS_URL` no `.env` se essa porta já estiver em uso.
 
-3. Suba o banco de dados:
+3. Suba o banco de dados e o Redis:
 
    ```bash
    docker compose up -d
