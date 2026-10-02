@@ -64,6 +64,15 @@ O frontend (Nuxt.js, conforme o TCC) ainda não existe neste repositório, entã
 
 - **Ação pendente e explícita:** antes de qualquer deploy real (`tst`/`prod`), `CORS_ALLOWED_ORIGINS` precisa ser definida com a origem real do frontend. Ficar em `*` em produção anularia parte do propósito de CORS. Isso fica registrado aqui para não ser esquecido — o mesmo tipo de lembrete que a ADR 0003 registrou sobre migrations.
 
+### Correções feitas após revisão (parsing de `CORS_ALLOWED_ORIGINS`)
+
+Duas rodadas de revisão encontraram o mesmo tipo de bug no parsing dessa variável, cada uma com um gatilho diferente:
+
+1. `CORS_ALLOWED_ORIGINS=""` (string vazia, não ausente — é o que o `.env` traz por padrão): `''.split(',')` retorna `['']`, não `undefined`, então o fallback pra `'*'` nunca disparava.
+2. `CORS_ALLOWED_ORIGINS=" "` ou `","` (só espaço ou só vírgula): depois de `split` + `trim`, viram `['']`/`['', '']` — um array não-vazio (logo truthy), mesmo problema por um caminho diferente.
+
+Em ambos os casos, o efeito era o oposto do pretendido: em vez de liberar qualquer origem (comportamento de dev documentado), a API ficava configurada pra aceitar só uma origem vazia — ou seja, nenhuma origem real. Corrigido filtrando entradas em branco depois do `split`+`trim` e checando o **tamanho** do array resultante, não só sua existência, antes de decidir entre a lista configurada e `'*'`. Testado com `""`, `" "`, `","` e `" , , "` — todos corretamente caem em `'*'`.
+
 ## Referências
 
 - [ADR 0002](0002-hash-senha-e-refresh-token.md) — `ValidationPipe` global já existente

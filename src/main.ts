@@ -12,15 +12,21 @@ async function bootstrap() {
   app.use(helmet());
 
   // Origem(ns) configurável via env (ver ADR 0006): em dev, sem
-  // CORS_ALLOWED_ORIGINS definida (ou vazia — `.env` traz a chave vazia por
-  // padrão, e "" não é a mesma coisa que undefined), libera qualquer origem.
-  // Antes de qualquer deploy real, essa variável precisa apontar para a
-  // origem real do frontend.
-  const rawOrigins = process.env.CORS_ALLOWED_ORIGINS;
-  const allowedOrigins = rawOrigins
-    ? rawOrigins.split(',').map((origin) => origin.trim())
-    : undefined;
-  app.enableCors({ origin: allowedOrigins ?? '*' });
+  // CORS_ALLOWED_ORIGINS definida (ou vazia/só espaço/só vírgula — qualquer
+  // valor que não sobre nenhuma origem de verdade depois do split+trim),
+  // libera qualquer origem. Antes de qualquer deploy real, essa variável
+  // precisa apontar para a origem real do frontend.
+  //
+  // O filter() importa: "" ou " " já são strings truthy, e um array como
+  // [''] também é truthy (não é a mesma coisa que vazio) — sem filtrar as
+  // entradas em branco, `?? '*'` nunca dispararia nesses casos, e o CORS
+  // ficaria configurado pra aceitar uma origem vazia, ou seja, nenhuma.
+  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  app.enableCors({
+    origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : '*',
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
