@@ -1,6 +1,6 @@
 # ADR 0005: Modelagem do domínio de agendamento e regras de negócio
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-09-27
 
 ## Contexto
