@@ -34,6 +34,18 @@ OWASP API Security Top 10 (referenciado no TCC) lista autenticação quebrada �
 - Os limites são constantes no código, não configuráveis por ambiente por enquanto — mesma lógica de simplificação de escopo já usada em outras decisões deste projeto (ex: horário de funcionamento fixo na ADR 0005).
 - Rate limiting por IP tem uma limitação conhecida: múltiplos usuários atrás do mesmo NAT/proxy compartilham o limite. Aceitável para o escopo do TCC; mitigação real (rate limit por usuário autenticado, quando aplicável) fica como extensão futura.
 
+### Correção feita após revisão: storage compartilhado (Redis)
+
+A implementação original usava o storage padrão do `@nestjs/throttler` (em memória, por processo). Revisão de código apontou que isso viola a **RNF06** do TCC ("arquitetura compatível com sistemas distribuídos... permitindo escalabilidade horizontal"): cada réplica da API manteria seus próprios contadores, então um cliente poderia exceder o limite documentado espalhando requisições entre réplicas, e um restart zeraria tudo.
+
+Corrigido com uma implementação própria de `ThrottlerStorage` sobre Redis (`src/common/redis-throttler-storage.ts`), reproduzindo o algoritmo original (janela deslizante via `ZSET` + bloqueio via chave com TTL, atômico por um script Lua — `blockDuration` não é zero por padrão no `@nestjs/throttler`, então o caminho "com bloqueio" é o que está em uso de fato, não um caso raro a ignorar). Novo serviço `redis` no `docker-compose.yml`.
+
+Para não repetir o problema já visto com o `PrismaService` (ADR original de segurança — adapter criado em cima da hora, antes do `ConfigModule` carregar o `.env`), o storage é injetado via um módulo próprio (`RedisThrottlerStorageModule`) e o `ThrottlerModule` é registrado com `forRootAsync`, não `forRoot`.
+
+**Validado de verdade:** duas instâncias da API em portas diferentes, apontando para o mesmo Redis, alternando requisições entre as duas — o limite de 5/min é respeitado no **total** somado das duas, não 5 por instância (o que aconteceria com o storage em memória).
+
+**Efeito colateral encontrado e corrigido:** o `AppModule` passou a depender de `REDIS_URL` via `requireEnv()`, o que quebrou a suíte e2e (que não tinha essa variável no `test/setup-env.ts` nem mockava o storage) — o teste só não falhou por acaso, porque o `ConfigModule` carrega o `.env` real do disco por baixo dos panos, e nesta máquina havia um Redis rodando. Sem `.env`/Redis, a suíte quebrava por completo. Corrigido mockando `RedisThrottlerStorage` no e2e, do mesmo jeito que o `PrismaService` já era mockado — confirmado rodando a suíte com `.env` removido **e** o container do Redis parado.
+
 ## Decisão 2: Helmet
 
 `app.use(helmet())` com a configuração padrão do pacote — define um conjunto de cabeçalhos HTTP de segurança (`X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`, remoção do `X-Powered-By`, entre outros) sem nenhuma configuração específica do domínio da aplicação. Não há decisão de trade-off aqui: é a prática padrão de mercado para qualquer API Express/NestJS, sem custo de desenvolvimento.

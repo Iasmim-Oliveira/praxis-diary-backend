@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { RedisThrottlerStorage } from './common/redis-throttler-storage';
+import { RedisThrottlerStorageModule } from './common/redis-throttler-storage.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -15,7 +17,17 @@ import { RolesGuard } from './auth/guards/roles.guard';
     ConfigModule.forRoot({ isGlobal: true }),
     // Limite global (ver ADR 0006); rotas específicas (login/register) usam
     // @Throttle(...) para sobrescrever com um limite mais estrito.
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    // RedisThrottlerStorage vem de um módulo próprio (injetado, não criado
+    // com `new` aqui dentro) justamente para poder ser substituído por um
+    // mock nos testes e2e, igual o PrismaService.
+    ThrottlerModule.forRootAsync({
+      imports: [RedisThrottlerStorageModule],
+      inject: [RedisThrottlerStorage],
+      useFactory: (storage: RedisThrottlerStorage) => ({
+        throttlers: [{ ttl: 60000, limit: 100 }],
+        storage,
+      }),
+    }),
     PrismaModule,
     AuthModule,
     UsersModule,
