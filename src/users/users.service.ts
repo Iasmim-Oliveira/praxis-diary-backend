@@ -6,8 +6,6 @@ import {
 import { Prisma, Role } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-// Nunca inclui passwordHash — é a lista/edição que o ADMIN vê na
-// "Tela de Gestão de Usuários", não precisa (e não deve) expor o hash.
 const SAFE_USER_SELECT = {
   id: true,
   name: true,
@@ -56,16 +54,22 @@ export class UsersService {
         await this.ensureNotLastAdmin(tx, id);
       }
 
-      await tx.user.delete({ where: { id } });
+      try {
+        await tx.user.delete({ where: { id } });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new ConflictException(
+            'Não é possível remover um usuário que criou agendamentos',
+          );
+        }
+        throw error;
+      }
     });
   }
 
-  // Serializa qualquer mudança que possa afetar quantos ADMINs existem.
-  // Sem isso, a checagem em ensureNotLastAdmin() e a mutação (update/delete)
-  // que vem depois não são atômicas entre si: dois ADMINs sendo removidos ao
-  // mesmo tempo poderiam cada um contar o outro como "o único restante",
-  // ambos passarem a checagem, e o sistema ficar com zero admins. O lock é
-  // escopado à transação — liberado sozinho no commit/rollback.
   private async lockAdminRoster(tx: Prisma.TransactionClient): Promise<void> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('praxis_diary:admin_roster')::bigint)`;
   }
@@ -78,8 +82,6 @@ export class UsersService {
     return user;
   }
 
-  // Regra de negócio: o sistema nunca pode ficar sem nenhum ADMIN (ninguém
-  // mais poderia gerenciar usuários depois disso — um "lockout" de si mesmo).
   private async ensureNotLastAdmin(
     tx: Prisma.TransactionClient,
     excludingId: string,
