@@ -9,6 +9,9 @@ import { RedisThrottlerStorageModule } from './common/redis-throttler-storage.mo
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { ServicesModule } from './services/services.module';
+import { ClientsModule } from './clients/clients.module';
+import { AppointmentsModule } from './appointments/appointments.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 
@@ -31,6 +34,9 @@ import { RolesGuard } from './auth/guards/roles.guard';
     PrismaModule,
     AuthModule,
     UsersModule,
+    ServicesModule,
+    ClientsModule,
+    AppointmentsModule,
   ],
   controllers: [AppController],
   providers: [
