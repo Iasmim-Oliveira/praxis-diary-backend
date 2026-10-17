@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -15,9 +16,8 @@ import { AppointmentsService } from './appointments.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto';
+import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
-// RF04/RF05/RF07 do TCC. Sem @Roles() — qualquer usuário autenticado opera a
-// agenda (ver ADR 0005).
 @Controller('appointments')
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
@@ -32,8 +32,6 @@ export class AppointmentsController {
     return this.appointmentsService.findAll(query.from, query.to);
   }
 
-  // Precisa vir ANTES de GET /:id — senão "availability" seria interpretado
-  // como um :id (e rejeitado pelo ParseUUIDPipe da rota seguinte).
   @Get('availability')
   availability(@Query() query: AvailabilityQueryDto) {
     return this.appointmentsService.availability(query.serviceId, query.date);
@@ -42,6 +40,14 @@ export class AppointmentsController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.appointmentsService.findOneOrThrow(id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAppointmentDto,
+  ) {
+    return this.appointmentsService.update(id, dto);
   }
 
   @HttpCode(HttpStatus.OK)

@@ -113,6 +113,17 @@ Endpoint novo: `GET /appointments/availability?serviceId=&date=`. Retorna os hor
 
 Não exige mecanismo novo: `GET /appointments?from=&to=` — filtro de listagem por intervalo de datas sobre a mesma tabela, usando o índice de `[startsAt, endsAt]` já definido na Decisão 1.
 
+## Decisão 8: Edição de agendamento (RF04)
+
+Endpoint: `PATCH /appointments/:id`, aceitando `clientId`, `serviceId` e `startsAt` — todos opcionais. `status` e `endsAt` nunca são aceitos: cancelar continua sendo a operação própria da Decisão 5, e o fim continua calculado no servidor (Decisão 4).
+
+Regras:
+
+- **Agendamento cancelado não pode ser editado** (`409`). Reativar um horário cancelado seria uma criação disfarçada; o caminho é criar um agendamento novo.
+- **Trocar `startsAt` ou `serviceId` é um reagendamento:** `endsAt` é recalculado como `startsAt + durationMinutes` com a duração **atual** do serviço, e o novo intervalo passa de novo pela RN01 — checagem prévia no código (ignorando o próprio agendamento) + a mesma exclusion constraint como garantia real.
+- **Trocar só `clientId` não mexe no intervalo** — `endsAt` continua congelado, como na Decisão 1.
+- **A antecedência mínima da RN04 não se aplica à edição.** A RN04 fala de cancelamento; estendê-la para reagendamento seria uma regra nova, fora do que o TCC especifica. Fica registrada como extensão possível.
+
 ## Consequências
 
 - Três novos módulos NestJS (`Service`, `Client`, `Appointment`), seguindo a mesma estrutura já estabelecida (`Module`/`Controller`/`Service`/DTOs com `class-validator`).

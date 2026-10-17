@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ClientsService } from '../clients/clients.service';
 import { ServicesService } from '../services/services.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
 // RN04 (ADR 0005): constante no código, não configurável por enquanto.
 const MIN_CANCELLATION_NOTICE_MINUTES = 60;
@@ -89,6 +90,53 @@ export class AppointmentsService {
     return appointment;
   }
 
+  async update(id: string, dto: UpdateAppointmentDto) {
+    const appointment = await this.findOneOrThrow(id);
+
+    if (appointment.status === AppointmentStatus.CANCELLED) {
+      throw new ConflictException(
+        'Não é possível editar um agendamento cancelado',
+      );
+    }
+
+    if (dto.clientId) {
+      await this.clientsService.findOneOrThrow(dto.clientId);
+    }
+
+    // Mudar o horário ou o serviço é um reagendamento: `endsAt` é recalculado
+    // no servidor com a duração atual do serviço e passa de novo pela RN01.
+    // Trocar só o cliente mantém o intervalo congelado (ADR 0005, Decisão 1).
+    let { startsAt, endsAt } = appointment;
+    if (dto.startsAt || dto.serviceId) {
+      const service = dto.serviceId
+        ? await this.servicesService.findOneOrThrow(dto.serviceId)
+        : appointment.service;
+      startsAt = dto.startsAt ? new Date(dto.startsAt) : appointment.startsAt;
+      endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
+
+      await this.ensureNoOverlap(startsAt, endsAt, id);
+    }
+
+    try {
+      return await this.prisma.appointment.update({
+        where: { id },
+        data: {
+          clientId: dto.clientId,
+          serviceId: dto.serviceId,
+          startsAt,
+          endsAt,
+        },
+      });
+    } catch (error) {
+      // Mesma garantia do create: a exclusion constraint é quem decide sob
+      // concorrência; a checagem acima é só a resposta amigável.
+      if (this.isOverlapViolation(error)) {
+        throw new ConflictException('Já existe um agendamento nesse horário');
+      }
+      throw error;
+    }
+  }
+
   async cancel(id: string) {
     const appointment = await this.findOneOrThrow(id);
 
@@ -149,9 +197,16 @@ export class AppointmentsService {
     return slots;
   }
 
-  private async ensureNoOverlap(startsAt: Date, endsAt: Date): Promise<void> {
+  // `excludingId`: no update, o próprio agendamento não conta como conflito
+  // consigo mesmo (ex.: adiar 15 minutos um horário que se sobrepõe ao atual).
+  private async ensureNoOverlap(
+    startsAt: Date,
+    endsAt: Date,
+    excludingId?: string,
+  ): Promise<void> {
     const overlapping = await this.prisma.appointment.findFirst({
       where: {
+        id: excludingId ? { not: excludingId } : undefined,
         status: AppointmentStatus.SCHEDULED,
         startsAt: { lt: endsAt },
         endsAt: { gt: startsAt },
