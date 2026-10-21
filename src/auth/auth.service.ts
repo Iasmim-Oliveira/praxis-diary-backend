@@ -1,12 +1,14 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { Prisma, Role, User } from '../../generated/prisma/client';
 import { requireEnv } from '../common/env.util';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -19,9 +21,15 @@ export interface TokenPair {
 
 @Injectable()
 export class AuthService {
+  // Logs de negócio (ver ADR 0007): o Logger do Nest é roteado para o pino
+  // e herda o req.id da requisição em andamento. E-mail nunca é logado
+  // (dado pessoal, LGPD) — só o id do usuário, quando ele existe.
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async register(dto: RegisterDto): Promise<TokenPair> {
@@ -58,6 +66,12 @@ export class AuthService {
       throw error;
     }
 
+    this.logger.log({
+      msg: 'user registered',
+      userId: user.id,
+      role: user.role,
+    });
+
     return this.issueTokens({
       sub: user.id,
       email: user.email,
@@ -71,13 +85,16 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw this.loginFailed('unknown_email');
     }
 
     const passwordValid = await argon2.verify(user.passwordHash, dto.password);
     if (!passwordValid) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw this.loginFailed('invalid_password', user.id);
     }
+
+    this.metrics.authLogins.inc({ result: 'success' });
+    this.logger.log({ msg: 'login succeeded', userId: user.id });
 
     return this.issueTokens({
       sub: user.id,
@@ -100,6 +117,17 @@ export class AuthService {
       email: user.email,
       role: user.role,
     });
+  }
+
+  // O motivo fica só no log interno: para o cliente a resposta é sempre a
+  // mesma "Credenciais inválidas", para não revelar quais e-mails existem.
+  private loginFailed(
+    reason: 'unknown_email' | 'invalid_password',
+    userId?: string,
+  ): UnauthorizedException {
+    this.metrics.authLogins.inc({ result: 'failure' });
+    this.logger.warn({ msg: 'login failed', reason, userId });
+    return new UnauthorizedException('Credenciais inválidas');
   }
 
   private issueTokens(payload: JwtPayload): TokenPair {

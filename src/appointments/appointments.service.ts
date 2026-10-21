@@ -1,9 +1,15 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { AppointmentStatus, Prisma } from '../../generated/prisma/client';
+import {
+  Appointment,
+  AppointmentStatus,
+  Prisma,
+} from '../../generated/prisma/client';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientsService } from '../clients/clients.service';
 import { ServicesService } from '../services/services.service';
@@ -22,12 +28,18 @@ export interface AvailabilitySlot {
   endsAt: Date;
 }
 
+type WriteOperation = 'create' | 'update';
+
 @Injectable()
 export class AppointmentsService {
+  // Logs de negócio (ver ADR 0007): herdam o req.id da requisição.
+  private readonly logger = new Logger(AppointmentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly servicesService: ServicesService,
     private readonly clientsService: ClientsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async create(dto: CreateAppointmentDto, createdById: string) {
@@ -39,10 +51,11 @@ export class AppointmentsService {
       startsAt.getTime() + service.durationMinutes * 60_000,
     );
 
-    await this.ensureNoOverlap(startsAt, endsAt);
+    await this.ensureNoOverlap('create', startsAt, endsAt);
 
+    let appointment: Appointment;
     try {
-      return await this.prisma.appointment.create({
+      appointment = await this.prisma.appointment.create({
         data: {
           clientId: dto.clientId,
           serviceId: dto.serviceId,
@@ -57,10 +70,21 @@ export class AppointmentsService {
       // mesmo sob concorrência, é a exclusion constraint `appointment_no_overlap`
       // no banco. Se ela disparar, convertemos pro mesmo erro amigável.
       if (this.isOverlapViolation(error)) {
-        throw new ConflictException('Já existe um agendamento nesse horário');
+        throw this.overlapConflict('create', 'constraint', startsAt, endsAt);
       }
       throw error;
     }
+
+    this.metrics.appointmentsCreated.inc();
+    this.logger.log({
+      msg: 'appointment created',
+      appointmentId: appointment.id,
+      serviceId: appointment.serviceId,
+      clientId: appointment.clientId,
+      startsAt: appointment.startsAt,
+    });
+
+    return appointment;
   }
 
   findAll(from?: string, to?: string) {
@@ -107,18 +131,20 @@ export class AppointmentsService {
     // no servidor com a duração atual do serviço e passa de novo pela RN01.
     // Trocar só o cliente mantém o intervalo congelado (ADR 0005, Decisão 1).
     let { startsAt, endsAt } = appointment;
-    if (dto.startsAt || dto.serviceId) {
+    const rescheduled = Boolean(dto.startsAt || dto.serviceId);
+    if (rescheduled) {
       const service = dto.serviceId
         ? await this.servicesService.findOneOrThrow(dto.serviceId)
         : appointment.service;
       startsAt = dto.startsAt ? new Date(dto.startsAt) : appointment.startsAt;
       endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
 
-      await this.ensureNoOverlap(startsAt, endsAt, id);
+      await this.ensureNoOverlap('update', startsAt, endsAt, id);
     }
 
+    let updated: Appointment;
     try {
-      return await this.prisma.appointment.update({
+      updated = await this.prisma.appointment.update({
         where: { id },
         data: {
           clientId: dto.clientId,
@@ -131,10 +157,20 @@ export class AppointmentsService {
       // Mesma garantia do create: a exclusion constraint é quem decide sob
       // concorrência; a checagem acima é só a resposta amigável.
       if (this.isOverlapViolation(error)) {
-        throw new ConflictException('Já existe um agendamento nesse horário');
+        throw this.overlapConflict('update', 'constraint', startsAt, endsAt);
       }
       throw error;
     }
+
+    this.metrics.appointmentsUpdated.inc({ rescheduled: String(rescheduled) });
+    this.logger.log({
+      msg: 'appointment updated',
+      appointmentId: id,
+      rescheduled,
+      startsAt: updated.startsAt,
+    });
+
+    return updated;
   }
 
   async cancel(id: string) {
@@ -147,15 +183,27 @@ export class AppointmentsService {
     const minutesUntilStart =
       (appointment.startsAt.getTime() - Date.now()) / 60_000;
     if (minutesUntilStart < MIN_CANCELLATION_NOTICE_MINUTES) {
+      this.metrics.cancellationsRejected.inc();
+      this.logger.warn({
+        msg: 'appointment cancellation rejected',
+        reason: 'notice_period',
+        appointmentId: id,
+        minutesUntilStart: Math.floor(minutesUntilStart),
+      });
       throw new ConflictException(
         `Cancelamento só é permitido até ${MIN_CANCELLATION_NOTICE_MINUTES} minutos antes do horário`,
       );
     }
 
-    return this.prisma.appointment.update({
+    const cancelled = await this.prisma.appointment.update({
       where: { id },
       data: { status: AppointmentStatus.CANCELLED, cancelledAt: new Date() },
     });
+
+    this.metrics.appointmentsCancelled.inc();
+    this.logger.log({ msg: 'appointment cancelled', appointmentId: id });
+
+    return cancelled;
   }
 
   async availability(
@@ -200,6 +248,7 @@ export class AppointmentsService {
   // `excludingId`: no update, o próprio agendamento não conta como conflito
   // consigo mesmo (ex.: adiar 15 minutos um horário que se sobrepõe ao atual).
   private async ensureNoOverlap(
+    operation: WriteOperation,
     startsAt: Date,
     endsAt: Date,
     excludingId?: string,
@@ -213,8 +262,27 @@ export class AppointmentsService {
       },
     });
     if (overlapping) {
-      throw new ConflictException('Já existe um agendamento nesse horário');
+      throw this.overlapConflict(operation, 'precheck', startsAt, endsAt);
     }
+  }
+
+  // `detectedBy` separa a checagem prévia da constraint do banco: um volume
+  // alto de 'constraint' indica corrida real entre requisições simultâneas.
+  private overlapConflict(
+    operation: WriteOperation,
+    detectedBy: 'precheck' | 'constraint',
+    startsAt: Date,
+    endsAt: Date,
+  ): ConflictException {
+    this.metrics.appointmentConflicts.inc({ operation });
+    this.logger.warn({
+      msg: 'appointment conflict',
+      operation,
+      detectedBy,
+      startsAt,
+      endsAt,
+    });
+    return new ConflictException('Já existe um agendamento nesse horário');
   }
 
   private isOverlapViolation(error: unknown): boolean {

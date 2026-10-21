@@ -1,0 +1,12 @@
+# Provisioning: o Grafana já sobe com o Prometheus configurado, sem clique
+# manual. O uid fixo é o que o dashboard versionado referencia.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

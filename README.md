@@ -11,8 +11,9 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 - **PostgreSQL** — banco de dados
 - **Prisma** — ORM / migrations
 - **Redis** — storage compartilhado do rate limiting
-- **Docker Compose** — ambiente local (Postgres + Redis)
-- Prometheus + Grafana — observabilidade _(planejado)_
+- **Docker Compose** — ambiente local (Postgres, Redis, Prometheus, Grafana)
+- **pino** — logs estruturados
+- **Prometheus** + **Grafana** — métricas e dashboards
 - Swagger/OpenAPI — documentação da API _(planejado)_
 
 ## Status do projeto
@@ -23,8 +24,8 @@ Este repositório é o backend desenvolvido como parte do Trabalho de Conclusão
 - [x] Autorização (RBAC)
 - [x] Regras de negócio core (agendamento, clientes, disponibilidade) — ver [ADR 0005](docs/decisions/0005-dominio-de-agendamento.md)
 - [x] Segurança de API (rate limiting, helmet, validação de input, CORS)
-- [ ] Observabilidade (logs estruturados, métricas Prometheus)
-- [ ] Dashboards (Grafana)
+- [x] Observabilidade (logs estruturados, métricas Prometheus) — ver [ADR 0007](docs/decisions/0007-observabilidade.md) e [OBSERVABILITY.md](OBSERVABILITY.md)
+- [x] Dashboards (Grafana)
 - [ ] Documentação (OpenAPI/Swagger)
 - [ ] Testes (unit, integração, e2e)
 
@@ -52,11 +53,13 @@ As decisões arquiteturais tomadas ao longo do projeto — e o porquê de cada u
 
    Por padrão, o Postgres do projeto sobe na porta `5433` (não `5432`), para não conflitar com outras instâncias de Postgres que você já tenha rodando localmente. O Redis sobe na `6379` por padrão — ajuste `REDIS_PORT`/`REDIS_URL` no `.env` se essa porta já estiver em uso.
 
-3. Suba o banco de dados e o Redis:
+3. Suba o banco de dados, o Redis, o Prometheus e o Grafana:
 
    ```bash
    docker compose up -d
    ```
+
+   O Grafana fica em http://localhost:3001 (`admin`/`admin`) e o Prometheus em http://localhost:9090 — ver [OBSERVABILITY.md](OBSERVABILITY.md).
 
 4. Aplique as migrations do Prisma (cria as tabelas no banco):
 
@@ -104,6 +107,10 @@ prisma/
   migrations/           # histórico de migrations do banco
 docs/
   decisions/            # ADRs — decisões arquiteturais e o porquê de cada uma
-docker-compose.yml      # ambiente local do Postgres
+observability/
+  prometheus/           # configuração de scrape do Prometheus
+  grafana/              # datasource e dashboards provisionados
+docker-compose.yml      # ambiente local (Postgres, Redis, Prometheus, Grafana)
+OBSERVABILITY.md        # guia de logs, métricas e dashboards
 ```
 © 2026 Iasmim Vieira de Oliveira. Todos os direitos reservados. Este código não possui licença de uso livre.
