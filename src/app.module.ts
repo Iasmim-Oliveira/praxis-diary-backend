@@ -15,6 +15,7 @@ import { UsersModule } from './users/users.module';
 import { ServicesModule } from './services/services.module';
 import { ClientsModule } from './clients/clients.module';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import type { JwtPayload } from './auth/interfaces/jwt-payload.interface';
@@ -22,7 +23,7 @@ import type { JwtPayload } from './auth/interfaces/jwt-payload.interface';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Logs estruturados (RNF08, ver LOGGING.md). forRootAsync + ConfigService
+    // Logs estruturados (RNF08, ver ADR 0007). forRootAsync + ConfigService
     // pelo mesmo motivo do Throttler abaixo: a config depende de env.
     LoggerModule.forRootAsync({
       inject: [ConfigService],
@@ -65,6 +66,19 @@ import type { JwtPayload } from './auth/interfaces/jwt-payload.interface';
               userId: (req as Request & { user?: JwtPayload }).user?.sub,
             }),
 
+            // O scrape do Prometheus chega a cada 15s; logá-lo só gera ruído.
+            autoLogging: {
+              ignore: (req) => req.url?.split('?')[0] === '/metrics',
+            },
+
+            // Do lado da resposta, só o status interessa: os headers são
+            // sempre os mesmos do helmet e só incham cada linha de log.
+            serializers: {
+              res: (res: { statusCode: number }) => ({
+                statusCode: res.statusCode,
+              }),
+            },
+
             customLogLevel: (_req, res, err) => {
               if (err || res.statusCode >= 500) return 'error';
               if (res.statusCode >= 400) return 'warn';
@@ -74,11 +88,7 @@ import type { JwtPayload } from './auth/interfaces/jwt-payload.interface';
             // RNF03: credenciais nunca vão para o log. O body não é logado
             // pelo pino-http por padrão (senha e refresh token ficam de fora).
             redact: {
-              paths: [
-                'req.headers.authorization',
-                'req.headers.cookie',
-                'res.headers["set-cookie"]',
-              ],
+              paths: ['req.headers.authorization', 'req.headers.cookie'],
               censor: '[REDACTED]',
             },
           },
@@ -98,6 +108,7 @@ import type { JwtPayload } from './auth/interfaces/jwt-payload.interface';
         storage,
       }),
     }),
+    MetricsModule,
     PrismaModule,
     AuthModule,
     UsersModule,
