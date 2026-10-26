@@ -33,7 +33,7 @@ As decisões arquiteturais tomadas ao longo do projeto — e o porquê de cada u
 
 ## Pré-requisitos
 
-- Node.js 22.12+ (ou 20.19+/24+ — ver `engines` no `package.json`; `@nestjs/throttler` e o Prisma não suportam 22.0–22.11)
+- Node.js 22.12+ ou 24+ (ver `engines` no `package.json`). Node 22.0–22.11 não é suportado pelo `@nestjs/throttler`, pelo Prisma e pelo `nestjs-pino`. O Node 20 não é suportado: chegou ao fim de vida em abril de 2026 e não recebe mais correções de segurança.
 - npm
 - Docker (usado aqui via [OrbStack](https://orbstack.dev/), mas Docker Desktop também funciona)
 
