@@ -1,0 +1,13 @@
+# Carrega os dashboards em JSON de /etc/grafana/dashboards (montado a partir
+# de observability/grafana/dashboards). Editar pela UI funciona, mas a fonte
+# da verdade é o arquivo: exporte o JSON e versione a mudança.
+apiVersion: 1
+
+providers:
+  - name: praxis-diary
+    folder: Praxis Diary
+    type: file
+    disableDeletion: true
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

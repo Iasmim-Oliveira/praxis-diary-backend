@@ -1,0 +1,18 @@
+# RNF09 (ver ADR 0007). O Prometheus roda no Docker e a API roda no host
+# (npm run start:dev), por isso o alvo é host.docker.internal — mapeado no
+# docker-compose.yml para funcionar também em Linux.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: praxis-diary-api
+    metrics_path: /metrics
+    static_configs:
+      # Ajuste a porta se a API não estiver rodando na 3000 (PORT do .env).
+      - targets: ['host.docker.internal:3000']
+    # Com METRICS_TOKEN definido na API, descomente e crie o arquivo com o
+    # mesmo valor (montado no container pelo docker-compose.yml):
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/metrics_token
