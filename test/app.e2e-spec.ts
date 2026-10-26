@@ -7,21 +7,25 @@ import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { RedisThrottlerStorage } from './../src/common/redis-throttler-storage';
 
+// `process.env.X = undefined` grava a string "undefined" em vez de remover a
+// variável — e "undefined" é truthy, então vazaria para os testes seguintes.
+function restoreEnv(key: string, original: string | undefined): void {
+  if (original === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = original;
+  }
+}
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
-  // Mock do Prisma: o e2e testa o guard global e as rotas públicas, não o
-  // banco (o fluxo com Postgres real é validado à parte).
   const prismaMock = {
     user: { findUnique: jest.fn(), create: jest.fn() },
     $connect: jest.fn(),
     $disconnect: jest.fn(),
   };
 
-  // Mock do storage do throttler: sem isso, o e2e dependeria de um Redis de
-  // verdade rodando (ver ADR 0006) só pra instanciar o AppModule — o mesmo
-  // motivo do mock do Prisma acima. "Nunca bloqueado" é o suficiente aqui,
-  // já que estes testes não existem pra validar rate limiting.
   const throttlerStorageMock = {
     increment: jest.fn().mockResolvedValue({
       totalHits: 0,
@@ -107,7 +111,6 @@ describe('AppController (e2e)', () => {
         .send({ email: 'x@y.com', password: 'qualquer' })
         .expect(401);
 
-      // A mensagem vem do AuthService; o guard responderia só "Unauthorized".
       expect((res.body as { message: string }).message).toBe(
         'Credenciais inválidas',
       );
@@ -115,14 +118,12 @@ describe('AppController (e2e)', () => {
   });
 
   describe('observabilidade (ADR 0007)', () => {
-    // Fixa METRICS_TOKEN por teste, independente do que estiver no .env
-    // (vazio = /metrics aberto). O ConfigService lê process.env na hora.
     const originalMetricsToken = process.env.METRICS_TOKEN;
     beforeEach(() => {
       process.env.METRICS_TOKEN = '';
     });
     afterAll(() => {
-      process.env.METRICS_TOKEN = originalMetricsToken;
+      restoreEnv('METRICS_TOKEN', originalMetricsToken);
     });
 
     it('gera um X-Request-Id quando o cliente não envia', async () => {
@@ -207,8 +208,8 @@ describe('AppController (e2e)', () => {
         );
         await prodApp.close();
       } finally {
-        process.env.NODE_ENV = originalNodeEnv;
-        process.env.LOG_LEVEL = originalLogLevel;
+        restoreEnv('NODE_ENV', originalNodeEnv);
+        restoreEnv('LOG_LEVEL', originalLogLevel);
       }
     });
   });
