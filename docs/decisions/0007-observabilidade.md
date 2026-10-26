@@ -51,7 +51,7 @@ Dois cuidados de projeto:
 O Prometheus não tem JWT de usuário, então a rota é `@Public()` e `@SkipThrottle()` (o scrape é periódico e não pode ser bloqueado). Mas métricas expostas revelam rotas, volume e saúde da API, então:
 
 - Com `METRICS_TOKEN` definido, a rota exige `Authorization: Bearer <token>` — suportado nativamente pelo Prometheus (`authorization.credentials_file`). A comparação é feita sobre hashes com `timingSafeEqual`, para o tempo de resposta não vazar o token.
-- Sem a variável, fica aberta — mesmo padrão do CORS (ADR 0006): aceitável em dev, **nunca** em produção.
+- Sem a variável, fica aberta em dev. Em produção (`NODE_ENV=production`), a ausência do token **impede a aplicação de subir**: a regra "nunca aberto em produção" é garantida no código, não só na documentação. Falhar na inicialização foi preferido a responder 401 em produção, porque um deploy sem o segredo fica evidente na hora, em vez de aparecer só depois, como um Prometheus que parou de coletar.
 
 Em produção, o ideal é somar a isso a rede: `/metrics` acessível só pela rede interna, não pela internet.
 

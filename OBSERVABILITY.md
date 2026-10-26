@@ -125,7 +125,8 @@ A latência é medida num middleware (`src/metrics/http-metrics.middleware.ts`),
 
 ### Proteger o `/metrics`
 
-- Sem `METRICS_TOKEN`, o endpoint fica aberto. É aceitável em dev, **nunca** em produção, onde as métricas revelariam rotas, volume e saúde da API.
+- Sem `METRICS_TOKEN`, o endpoint fica aberto em dev.
+- Em produção (`NODE_ENV=production`), a API **não sobe** sem `METRICS_TOKEN`: as métricas revelariam rotas, volume e saúde da API. O erro na inicialização é `METRICS_TOKEN é obrigatório em produção`.
 - Com `METRICS_TOKEN` definido, ele exige `Authorization: Bearer <token>`.
 - Para o Prometheus enviar o token:
   1. Gere um valor (`openssl rand -hex 32`) e coloque em `METRICS_TOKEN` no `.env` da API.
@@ -192,10 +193,12 @@ Para ver os logs no formato de produção (JSON puro):
 
 ```bash
 npm run build
-NODE_ENV=production node dist/src/main
+NODE_ENV=production METRICS_TOKEN=token-local node dist/src/main
 ```
 
-Os testes e2e (`npm run test:e2e`) cobrem o `X-Request-Id`, o label `route` com template, o contador de login e a proteção por `METRICS_TOKEN`.
+O `METRICS_TOKEN` é necessário porque, em produção, a API não sobe sem ele.
+
+Os testes e2e (`npm run test:e2e`) cobrem o `X-Request-Id`, o label `route` com template, o contador de login, a proteção por `METRICS_TOKEN` e a recusa de subir em produção sem o token.
 
 ## Como estender
 

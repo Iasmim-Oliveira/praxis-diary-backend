@@ -184,5 +184,32 @@ describe('AppController (e2e)', () => {
         .set('Authorization', 'Bearer segredo-de-teste')
         .expect(200);
     });
+
+    it('em produção, sem METRICS_TOKEN, a aplicação não sobe', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalLogLevel = process.env.LOG_LEVEL;
+      process.env.NODE_ENV = 'production';
+      process.env.LOG_LEVEL = 'silent';
+
+      try {
+        const moduleFixture = await Test.createTestingModule({
+          imports: [AppModule],
+        })
+          .overrideProvider(PrismaService)
+          .useValue(prismaMock)
+          .overrideProvider(RedisThrottlerStorage)
+          .useValue(throttlerStorageMock)
+          .compile();
+        const prodApp = moduleFixture.createNestApplication();
+
+        await expect(prodApp.init()).rejects.toThrow(
+          'METRICS_TOKEN é obrigatório em produção',
+        );
+        await prodApp.close();
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+        process.env.LOG_LEVEL = originalLogLevel;
+      }
+    });
   });
 });

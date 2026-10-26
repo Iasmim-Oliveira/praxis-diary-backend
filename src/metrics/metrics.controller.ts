@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  OnModuleInit,
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,21 +13,25 @@ import type { Response } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { MetricsService } from './metrics.service';
 
-// @Public: o Prometheus não tem JWT de usuário. @SkipThrottle: o scrape é
-// periódico e não pode ser bloqueado pelo rate limit.
-//
-// Proteção própria (ver ADR 0007): com METRICS_TOKEN definido, exige
-// `Authorization: Bearer <token>` — o Prometheus suporta isso nativamente.
-// Sem a variável, fica aberto (aceitável em dev, como o CORS; NUNCA em
-// produção, onde as métricas revelariam rotas, volume e saúde da API).
 @Public()
 @SkipThrottle()
 @Controller('metrics')
-export class MetricsController {
+export class MetricsController implements OnModuleInit {
   constructor(
     private readonly metrics: MetricsService,
     private readonly config: ConfigService,
   ) {}
+
+  onModuleInit(): void {
+    if (
+      this.config.get<string>('NODE_ENV') === 'production' &&
+      !this.metricsToken()
+    ) {
+      throw new Error(
+        'METRICS_TOKEN é obrigatório em produção: sem ele, GET /metrics ficaria público',
+      );
+    }
+  }
 
   @Get()
   async scrape(
@@ -40,7 +45,7 @@ export class MetricsController {
   }
 
   private ensureAuthorized(authorization: string | undefined): void {
-    const token = this.config.get<string>('METRICS_TOKEN')?.trim();
+    const token = this.metricsToken();
     if (!token) {
       return;
     }
@@ -55,5 +60,9 @@ export class MetricsController {
     if (!timingSafeEqual(expected, received)) {
       throw new UnauthorizedException();
     }
+  }
+
+  private metricsToken(): string | undefined {
+    return this.config.get<string>('METRICS_TOKEN')?.trim();
   }
 }
