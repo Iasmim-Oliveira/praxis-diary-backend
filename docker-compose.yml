@@ -12,7 +12,14 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-praxis}']
+      # -d é obrigatório: sem ele o pg_isready tenta o banco com o mesmo nome
+      # do usuário ("praxis"), que não existe, e o Postgres loga um FATAL a
+      # cada execução do healthcheck.
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-praxis} -d ${POSTGRES_DB:-praxis_diary}',
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,5 +36,43 @@ services:
       timeout: 5s
       retries: 5
 
+  # Observabilidade (RNF09/RNF10, ver ADR 0007).
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: praxis-diary-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - '${PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # A API roda no host, fora do Docker. Docker Desktop/OrbStack já resolvem
+    # host.docker.internal; no Linux é este mapeamento que faz funcionar.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: praxis-diary-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    # 3001 no host: a 3000 é da API.
+    ports:
+      - '${GRAFANA_PORT:-3001}:3000'
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
 volumes:
   postgres-data:
+  prometheus-data:
+  grafana-data:

@@ -1,10 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // bufferLogs: segura os logs do bootstrap até o pino estar pronto, para
+  // que nenhuma linha saia no formato antigo do Nest.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
 
   // Cabeçalhos de segurança padrão (X-Content-Type-Options, X-Frame-Options,
   // Strict-Transport-Security, remove X-Powered-By, etc). Sem configuração
